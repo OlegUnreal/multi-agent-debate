@@ -46,7 +46,7 @@ Topic ──► Proposer.speak() ──► Critic.speak() ──► Judge.speak(
                                               verdict: CONTINUE | ACCEPT | REJECT
 ```
 
-## Quick start
+## How to run
 
 ```bash
 git clone https://github.com/OlegUnreal/multi-agent-debate.git
@@ -70,6 +70,25 @@ python -m debate.server
 # tests
 pytest -q
 ```
+
+Windows notes:
+
+- Activate with `.venv\Scripts\activate`.
+- The web UI binds to `127.0.0.1:8000` by default; change `DEBATE_HOST` / `DEBATE_PORT` if the port is taken.
+- No native binaries required — pure Python + the OpenAI HTTP client.
+
+## Libraries used and why
+
+| Library | Version | Why it is here |
+|---|---|---|
+| `openai` | `>=1.40` | Typed client for the three agent roles. One shared client instance, role-specific system prompts passed per call — no per-role connection overhead. |
+| `fastapi` | `>=0.110` | ASGI web framework for the debate server. Async-native, so background debate jobs and the polling endpoint share one event loop without threads. |
+| `uvicorn[standard]` | `>=0.27` | ASGI server that runs FastAPI. The `[standard]` extra pulls in `uvloop`/`httptools` for better throughput; fine for a local demo too. |
+| `httpx` | `>=0.27` | Async HTTP client used by the test suite to hit the FastAPI app without spinning up a real server. Also the transport FastAPI's `TestClient` is built on. |
+| `python-dotenv` | `>=1.0` | Loads `.env` so the API key never lands in source control. |
+| `pytest` | `>=8.0` | (dev) Test runner for loop logic, verdict parsing, memory truncation, and server endpoints. |
+
+Why FastAPI over Flask: the debate is I/O-bound (waiting on LLM calls), and FastAPI's async model lets the UI poll for updates without blocking the running job. Flask would need threads or a task queue for the same thing.
 
 ## Web UI
 
