@@ -1,0 +1,10 @@
+GIF placeholder — replace with a real recording.
+
+Record with:
+
+```bash
+python -m debate.server
+# open http://127.0.0.1:8000 and click Start
+```
+
+Then convert the screen recording to GIF and commit it here.
