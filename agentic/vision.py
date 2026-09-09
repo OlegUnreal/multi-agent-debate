@@ -1,50 +1,49 @@
-"""Vision layer: describe the page for the agent."""
+"""Vision layer: turn a page snapshot into structured elements via the LLM."""
 from __future__ import annotations
 
 import json
 import re
-
-from .browser import PageState
-
-VISION_PROMPT = """Describe the interactive elements on this page.
-Return ONLY a JSON list of objects: {{"selector": str, "label": str, "type": "button|link|input"}}. No markdown.
-Page text: {text}
-"""
-
-_JSON_RE = re.compile(r"\[.*\]", re.DOTALL)
+from typing import Any, Callable
 
 
-def _parse_elements(raw) -> list[dict]:
+_FENCE_RE = re.compile(r"^```[a-zA-Z0-9_-]*\n?|```$", re.MULTILINE)
+
+
+def _parse_elements(raw: Any) -> list[dict]:
+    """Best-effort parse of an LLM element list, tolerant of fences and junk."""
+    if raw is None:
+        return []
     if isinstance(raw, list):
         return [e for e in raw if isinstance(e, dict)]
-    if not isinstance(raw, str) or not raw.strip():
-        return []
-    text = raw.strip()
+    text = raw if isinstance(raw, str) else str(raw)
+    text = text.strip()
     if text.startswith("```"):
-        text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
-        text = re.sub(r"\n?```$", "", text)
-    m = _JSON_RE.search(text)
-    if not m:
-        return []
+        text = text.split("\n", 1)[1]
+    if text.rstrip().endswith("```"):
+        text = text.rstrip()[: -len("```")].rstrip()
     try:
-        data = json.loads(m.group(0))
-    except json.JSONDecodeError:
+        data = json.loads(text)
+    except Exception:
         return []
-    return [e for e in data if isinstance(e, dict)] if isinstance(data, list) else []
+    if isinstance(data, list):
+        return [e for e in data if isinstance(e, dict)]
+    return []
 
 
-def describe(state: PageState, llm) -> list[dict]:
-    """Return interactive elements. `llm` may be a vision callable
-    `(state) -> raw` or a decision callable `(goal, url, elements, history) -> dict`.
+def describe(state: Any, decide: Callable) -> list[dict]:
+    """Ask the LLM to describe interactive elements on `state`.
+
+    Tolerates decision-style stubs (returns []) and crashing stubs.
     """
     try:
-        raw = llm(state)
-    except TypeError:
-        # Decision-style stub: (goal, url, elements, history) -> dict.
-        try:
-            raw = llm("goal", state.url, [], [])
-        except Exception:  # noqa: BLE001 - tolerate a crashing stub
-            return []
-    except Exception:  # noqa: BLE001
+        raw = decide(
+            "list interactive elements",
+            getattr(state, "url", ""),
+            getattr(state, "text", ""),
+            [],
+        )
+    except Exception:
+        return []
+    if isinstance(raw, dict):
         return []
     return _parse_elements(raw)
