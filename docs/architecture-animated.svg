@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 460" width="760" height="460">
+  <defs>
+    <style>
+      .box { fill:#0f172a; stroke:#a78bfa; stroke-width:2; rx:10; }
+      .lbl { fill:#e2e8f0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:14px; }
+      .sub { fill:#94a3b8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:11px; }
+      .arr { fill:none; stroke:#fbbf24; stroke-width:2.5; marker-end:url(#arr); }
+      .dot { fill:#fbbf24; }
+      .pulse { animation: p 2.6s infinite; }
+      @keyframes p { 0%{opacity:.2} 50%{opacity:1} 100%{opacity:.2} }
+    </style>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#fbbf24"/>
+    </marker>
+  </defs>
+  <rect width="760" height="460" fill="#020617"/>
+  <text x="24" y="34" class="lbl" font-size="16">multi-agent-debate · adversarial loop</text>
+
+  <rect class="box" x="40" y="90" width="150" height="70"/>
+  <text x="58" y="118" class="lbl">topic</text>
+  <text x="58" y="138" class="sub">user input</text>
+
+  <rect class="box" x="250" y="90" width="150" height="70"/>
+  <text x="268" y="118" class="lbl">Proposer</text>
+  <text x="268" y="138" class="sub">argues FOR</text>
+
+  <rect class="box" x="460" y="90" width="150" height="70"/>
+  <text x="478" y="118" class="lbl">Critic</text>
+  <text x="478" y="138" class="sub">argues AGAINST</text>
+
+  <rect class="box" x="670" y="90" width="60" height="70"/>
+  <text x="682" y="118" class="lbl">Judge</text>
+  <text x="682" y="138" class="sub">verdict</text>
+
+  <rect class="box" x="250" y="250" width="360" height="70"/>
+  <text x="268" y="278" class="lbl">isolated memory</text>
+  <text x="268" y="298" class="sub">per-role rolling context · no shared chain-of-thought</text>
+
+  <rect class="box" x="250" y="360" width="360" height="60"/>
+  <text x="268" y="388" class="lbl">web UI</text>
+  <text x="268" y="408" class="sub">FastAPI + vanilla JS · live rounds</text>
+
+  <path class="arr pulse" d="M190 125 L250 125"/>
+  <path class="arr pulse" d="M400 125 L460 125" style="animation-delay:.5s"/>
+  <path class="arr pulse" d="M610 125 L670 125" style="animation-delay:1.0s"/>
+  <path class="arr pulse" d="M700 160 L700 250 L610 250" style="animation-delay:1.5s"/>
+  <path class="arr pulse" d="M250 285 L190 285 L190 160" style="animation-delay:2.0s"/>
+  <path class="arr pulse" d="M430 320 L430 360" style="animation-delay:2.3s"/>
+
+  <circle class="dot pulse" cx="190" cy="125" r="4"/>
+  <circle class="dot pulse" cx="400" cy="125" r="4" style="animation-delay:.5s"/>
+  <circle class="dot pulse" cx="610" cy="125" r="4" style="animation-delay:1.0s"/>
+  <circle class="dot pulse" cx="700" cy="250" r="4" style="animation-delay:1.5s"/>
+  <circle class="dot pulse" cx="190" cy="160" r="4" style="animation-delay:2.0s"/>
+  <circle class="dot pulse" cx="430" cy="340" r="4" style="animation-delay:2.3s"/>
+
+  <text x="24" y="440" class="sub">judge is the only agent allowed to say ACCEPT / REJECT / CONTINUE</text>
+</svg>
