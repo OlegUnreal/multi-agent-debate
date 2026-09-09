@@ -19,6 +19,22 @@ class Round:
 _VERDICT_RE = re.compile(r"\b(ACCEPT|REJECT|CONTINUE)\b", re.IGNORECASE)
 
 
+def _as_text(value) -> str:
+    """Coerce any LLM payload to a single string.
+
+    Models sometimes return a list/dict (e.g. a tool-call payload) instead of
+    text. Joining list items keeps the content readable instead of producing
+    the useless repr "['x']".
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, tuple)):
+        return " ".join(_as_text(v) for v in value)
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
+
+
 def _extract_verdict(text: str) -> str:
     """Pull the first verdict token out of free-form judge text."""
     m = _VERDICT_RE.search(text or "")
@@ -30,7 +46,7 @@ def _safe_speak(agent: Agent, prompt: str, llm, retries: int = 2) -> str:
     last = ""
     for attempt in range(retries + 1):
         try:
-            out = agent.speak(prompt, llm)
+            out = _as_text(agent.speak(prompt, llm))
         except Exception as exc:  # noqa: BLE001
             last = f"[error: {exc}]"
             continue
