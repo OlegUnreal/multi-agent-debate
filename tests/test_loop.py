@@ -47,3 +47,10 @@ def test_survives_llm_exception():
     rounds = run_debate("t", boom, max_rounds=2)
     assert len(rounds) == 2
     assert "error" in rounds[0].proposer
+
+
+def test_survives_non_string_llm_response():
+    """A list/dict payload from the LLM must not crash the loop."""
+    seq = iter([["x"], {"a": 1}, "ACCEPT, coerced"])
+    rounds = run_debate("t", lambda s, p: next(seq), max_rounds=5)
+    assert verdict_of(rounds) == "ACCEPT"

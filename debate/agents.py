@@ -27,6 +27,11 @@ class Agent:
     def speak(self, user_msg: str, llm) -> str:
         self.memory.add("user", user_msg)
         reply = llm(self.system, self.memory.as_prompt())
+        # Defensive: the LLM hook must return text. If it returns a list or
+        # other object (e.g. a tool-call payload), coerce to string so the
+        # debate loop never crashes on a malformed response.
+        if not isinstance(reply, str):
+            reply = str(reply)
         self.memory.add("assistant", reply)
         return reply
 
