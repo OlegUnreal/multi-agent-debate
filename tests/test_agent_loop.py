@@ -18,7 +18,7 @@ def test_extracts_verdict_from_prose():
 
 
 def test_stops_on_accept():
-    seq = iter(["for it", "against it", "ACCEPT, looks solid"])
+    seq = iter(["for it", "against it", "ACCEPT, proposer wins on evidence"])
     rounds = run_debate("t", lambda s, p: next(seq), max_rounds=5)
     assert len(rounds) == 1
     assert verdict_of(rounds) == "ACCEPT"
