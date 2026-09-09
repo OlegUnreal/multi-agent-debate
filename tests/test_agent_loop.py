@@ -1,68 +1,64 @@
-from agentic.browser import PageState, Step, _execute, run
-from agentic.guard import Guard
-from agentic.vision import _parse_elements, describe
+"""Tests for the multi-agent debate loop."""
+from __future__ import annotations
+
+from debate.loop import run_debate, verdict_of, _extract_verdict, _as_text
 
 
-class FakeDriver:
-    def __init__(self):
-        self.calls = []
-    def goto(self, url):
-        self.calls.append(("goto", url)); return PageState(url, "t", "body", "")
-    def click(self, sel):
-        self.calls.append(("click", sel)); return PageState("u", "t", "body", "")
-    def type(self, sel, text):
-        self.calls.append(("type", sel, text)); return PageState("u", "t", "body", "")
-    def snapshot(self):
-        return PageState("u", "t", "body", "")
+def test_terminates(stub_llm):
+    rounds = run_debate("topic", stub_llm, max_rounds=3)
+    assert len(rounds) <= 3
+    assert rounds[-1].judge.upper().startswith(("ACCEPT", "REJECT", "CONTINUE"))
 
 
-def test_execute_goto_blocked():
-    g = Guard({"example.com"})
-    d = FakeDriver()
-    state = _execute(d, {"name": "goto", "args": {"url": "https://evil.com"}}, g)
-    assert state.text == "domain not allowed"
-    assert d.calls == []
+def test_extracts_verdict_from_prose():
+    assert _extract_verdict("I think we should ACCEPT this plan.") == "ACCEPT"
+    assert _extract_verdict("reject, too risky") == "REJECT"
+    assert _extract_verdict("keep going, more evidence needed") == "CONTINUE"
+    assert _extract_verdict("") == "CONTINUE"
 
 
-def test_execute_click():
-    g = Guard({"example.com"})
-    d = FakeDriver()
-    _execute(d, {"name": "click", "args": {"selector": "#x"}}, g)
-    assert d.calls[0] == ("click", "#x")
+def test_stops_on_accept():
+    seq = iter(["for it", "against it", "ACCEPT, looks solid"])
+    rounds = run_debate("t", lambda s, p: next(seq), max_rounds=5)
+    assert len(rounds) == 1
+    assert verdict_of(rounds) == "ACCEPT"
 
 
-def test_terminates_on_done():
-    def stub(goal, url, elements, history):
-        return {"name": "done", "args": {}}
-    steps = run("goal", "https://example.com", stub)
-    assert steps and steps[-1].action == "DONE"
+def test_stops_on_reject():
+    seq = iter(["for", "against", "REJECT, dealbreaker"])
+    rounds = run_debate("t", lambda s, p: next(seq), max_rounds=5)
+    assert verdict_of(rounds) == "REJECT"
 
 
-def test_survives_llm_error():
-    def boom(goal, url, elements, history):
-        raise RuntimeError("llm down")
-    steps = run("goal", "https://example.com", boom, max_steps=2)
-    assert any(s.action == "error" for s in steps)
+def test_retries_empty_response():
+    calls = {"n": 0}
+
+    def flaky(s, p):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return ""
+        return "ACCEPT, good enough"
+
+    rounds = run_debate("t", flaky, max_rounds=2)
+    assert verdict_of(rounds) == "ACCEPT"
+    assert calls["n"] >= 2
 
 
-def test_parse_elements_tolerates_fences():
-    raw = "```json\n[{\"selector\": \"#a\", \"label\": \"Go\", \"type\": \"button\"}]\n```"
-    els = _parse_elements(raw)
-    assert els and els[0]["selector"] == "#a"
+def test_survives_llm_exception():
+    def boom(s, p):
+        raise RuntimeError("boom")
+    rounds = run_debate("t", boom, max_rounds=2)
+    assert len(rounds) == 2
+    assert "error" in rounds[0].proposer
 
 
-def test_parse_elements_empty():
-    assert _parse_elements("") == []
-    assert _parse_elements(None) == []
+def test_survives_non_string_llm_response():
+    seq = iter([["x"], {"a": 1}, "ACCEPT, coerced"])
+    rounds = run_debate("t", lambda s, p: next(seq), max_rounds=5)
+    assert verdict_of(rounds) == "ACCEPT"
 
 
-def test_describe_accepts_decision_stub():
-    state = PageState("https://example.com", "t", "body text", "")
-    els = describe(state, lambda g, u, e, h: {"name": "done"})
-    assert els == []
-
-
-def test_describe_survives_crashing_stub():
-    state = PageState("https://example.com", "t", "body text", "")
-    els = describe(state, lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
-    assert els == []
+def test_as_text_coerces_list_and_dict():
+    assert _as_text(["a", "b"]) == "a b"
+    assert "a" in _as_text({"a": 1})
+    assert _as_text("plain") == "plain"
