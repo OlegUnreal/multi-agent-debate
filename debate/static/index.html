@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>multi-agent-debate</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --accent:#6ea8fe; --ok:#3ddc84; --bad:#ff6b6b; --txt:#e6e6e6; --muted:#8b93a7; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: ui-sans-serif, system-ui, sans-serif; background:var(--bg); color:var(--txt); }
+  header { padding:20px 24px; border-bottom:1px solid #23262f; display:flex; align-items:center; gap:12px; }
+  header h1 { font-size:18px; margin:0; font-weight:600; }
+  header .dot { width:10px; height:10px; border-radius:50%; background:var(--muted); }
+  header .dot.ok { background:var(--ok); }
+  main { max-width:880px; margin:0 auto; padding:24px; }
+  .composer { background:var(--panel); border:1px solid #23262f; border-radius:12px; padding:16px; }
+  textarea { width:100%; background:#0c0e12; color:var(--txt); border:1px solid #2a2e38; border-radius:8px; padding:12px; font-size:14px; resize:vertical; min-height:70px; }
+  .row { display:flex; gap:12px; align-items:center; margin-top:12px; }
+  button { background:var(--accent); color:#0b0d11; border:0; border-radius:8px; padding:10px 16px; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .meta { color:var(--muted); font-size:12px; }
+  .rounds { margin-top:20px; display:flex; flex-direction:column; gap:14px; }
+  .round { background:var(--panel); border:1px solid #23262f; border-radius:12px; padding:14px 16px; }
+  .round .head { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-bottom:10px; }
+  .bubble { margin:8px 0; padding:10px 12px; border-radius:8px; font-size:14px; line-height:1.5; white-space:pre-wrap; }
+  .bubble .who { font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }
+  .p { background:#1a2230; } .p .who { color:var(--accent); }
+  .c { background:#241a1a; } .c .who { color:var(--bad); }
+  .j { background:#1a241c; } .j .who { color:var(--ok); }
+  .verdict { display:inline-block; padding:4px 10px; border-radius:999px; font-weight:700; font-size:12px; }
+  .verdict.ACCEPT { background:rgba(61,220,132,.15); color:var(--ok); }
+  .verdict.REJECT { background:rgba(255,107,107,.15); color:var(--bad); }
+  .verdict.CONTINUE { background:rgba(139,147,167,.15); color:var(--muted); }
+  .err { color:var(--bad); }
+  .empty { color:var(--muted); text-align:center; padding:40px 0; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="dot"></span>
+  <h1>multi-agent-debate</h1>
+  <span class="meta" id="meta">checking…</span>
+</header>
+<main>
+  <div class="composer">
+    <textarea id="topic" placeholder="Should we migrate the monolith to microservices?"></textarea>
+    <div class="row">
+      <button id="go">Start debate</button>
+      <span class="meta" id="status">idle</span>
+    </div>
+  </div>
+  <div class="rounds" id="rounds"><div class="empty">No debate yet. Type a topic and hit Start.</div></div>
+</main>
+<script>
+async function check(){
+  try{
+    const r = await fetch('/api/health'); const j = await r.json();
+    document.getElementById('dot').className = 'dot ' + (j.has_key ? 'ok':'');
+    document.getElementById('meta').textContent = j.has_key ? ('live · ' + j.model) : 'offline stub';
+  }catch(e){ document.getElementById('meta').textContent = 'server unreachable'; }
+}
+check();
+
+const $ = id => document.getElementById(id);
+let poller = null;
+
+$('go').onclick = async () => {
+  const topic = $('topic').value.trim();
+  if(!topic) return;
+  $('go').disabled = true; $('status').textContent = 'starting…';
+  $('rounds').innerHTML = '';
+  try{
+    const r = await fetch('/api/debate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({topic})});
+    const job = await r.json();
+    poll(job.id);
+  }catch(e){ $('status').textContent = 'error: ' + e; $('go').disabled=false; }
+};
+
+function poll(id){
+  if(poller) clearInterval(poller);
+  poller = setInterval(async () => {
+    const r = await fetch('/api/debate/' + id);
+    const j = await r.json();
+    $('status').textContent = j.status;
+    render(j);
+    if(j.status === 'done' || j.status === 'error'){
+      clearInterval(poller); $('go').disabled = false;
+    }
+  }, 800);
+}
+
+function esc(s){ return (s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function render(j){
+  const box = $('rounds');
+  if(j.status === 'error'){ box.innerHTML = '<div class="err">' + esc(j.error) + '</div>'; return; }
+  if(!j.rounds.length){ box.innerHTML = '<div class="empty">Thinking…</div>'; return; }
+  let html = '';
+  for(const r of j.rounds){
+    html += '<div class="round"><div class="head"><span>Round ' + r.n + '</span></div>' +
+      bubble('proposer','p', r.proposer) + bubble('critic','c', r.critic) + bubble('judge','j', r.judge) + '</div>';
+  }
+  if(j.verdict){
+    html += '<div style="margin-top:8px"><span class="verdict ' + j.verdict + '">' + j.verdict + '</span></div>';
+  }
+  box.innerHTML = html;
+}
+function bubble(who, cls, text){
+  return '<div class="bubble ' + cls + '"><div class="who">' + who + '</div>' + esc(text) + '</div>';
+}
+</script>
+</body>
+</html>

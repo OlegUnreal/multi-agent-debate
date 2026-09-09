@@ -1,6 +1,6 @@
 # multi-agent-debate
 
-Several agents argue about one decision until they reach consensus.
+Several agents argue about one decision until they reach consensus — now with a web UI.
 
 ## Roles
 
@@ -18,11 +18,13 @@ Most agent demos are a single LLM with tools. This one shows *orchestration*: in
 
 ```
 config.py        -> Settings from env / .env
-logging_config.py-> structured JSON logs (no secrets)
+logging_config.py-> structured JSON logs (no secrets, extras scrubbed)
 agents.py        -> Proposer / Critic / Judge + system prompts
 memory.py        -> per-agent rolling memory
 llm.py           -> OpenAI client with retries + timeout
 loop.py          -> debate loop, verdict extraction, safe speak
+server.py        -> FastAPI + static UI, background jobs
+static/          -> single-page UI (vanilla JS, no build step)
 __main__.py      -> CLI: python -m debate "<topic>"
 ```
 
@@ -36,8 +38,11 @@ cp .env.example .env   # then put your OPENAI_API_KEY in .env
 # offline demo (no key needed)
 python -m debate.demo
 
-# live debate with your key
+# CLI live debate
 python -m debate "Should we migrate the monolith to microservices?"
+
+# web UI  ->  http://127.0.0.1:8000
+python -m debate.server
 
 # tests
 pytest -q
