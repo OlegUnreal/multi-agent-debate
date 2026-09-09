@@ -1,41 +1,64 @@
 # multi-agent-debate
 
-Several agents argue about one decision until they reach consensus — now with a web UI.
+Several agents argue about one decision until they reach consensus — with a live web UI to watch them.
 
-## Roles
+## The idea
 
-- **Proposer** — argues FOR the decision, has its own memory.
-- **Critic** — argues AGAINST, independent context.
-- **Judge** — reads both sides, scores, decides CONTINUE / ACCEPT / REJECT.
+One LLM with tools is a demo. Three LLMs with *independent memory*, adversarial roles, and a termination condition that isn't just "max steps" is an orchestration problem. This repo is that problem, solved.
 
-Each agent has isolated conversation memory, so they never bleed into each other. The judge is the only one allowed to terminate the loop.
+- **Proposer** argues FOR the decision, keeps its own rolling memory.
+- **Critic** argues AGAINST, with a completely separate context — it never sees the proposer's private chain-of-thought.
+- **Judge** reads both sides, scores them, and is the *only* agent allowed to say CONTINUE / ACCEPT / REJECT.
+
+The loop ends when the judge accepts, rejects, or the safety cap on rounds is hit.
 
 ## Why this is interesting
 
-Most agent demos are a single LLM with tools. This one shows *orchestration*: independent contexts, adversarial pressure, and a termination condition that isn't just "max steps".
+- **Isolated contexts** — agents cannot bleed into each other; memory is per-role, not shared.
+- **Adversarial pressure** — the critic exists to find holes, which surfaces weak arguments the proposer would otherwise gloss over.
+- **Real termination** — the judge decides, not a counter. This mirrors how human review panels actually work.
+- **Observable** — a single-page web UI streams every round in real time.
 
 ## Architecture
 
 ```
-config.py        -> Settings from env / .env
-logging_config.py-> structured JSON logs (no secrets, extras scrubbed)
-agents.py        -> Proposer / Critic / Judge + system prompts
-memory.py        -> per-agent rolling memory
-llm.py           -> OpenAI client with retries + timeout
-loop.py          -> debate loop, verdict extraction, safe speak
-server.py        -> FastAPI + static UI, background jobs
-static/          -> single-page UI (vanilla JS, no build step)
-__main__.py      -> CLI: python -m debate "<topic>"
+debate/
+├── config.py          # Settings from env / .env (pydantic-settings)
+├── logging_config.py  # structured JSON logs, secrets scrubbed, extras allow-listed
+├── agents.py          # Proposer / Critic / Judge + role-specific system prompts
+├── memory.py          # per-agent rolling memory (last N turns)
+├── llm.py             # OpenAI client: retries, timeout, injectable for tests
+├── loop.py            # debate loop, verdict extraction, safe speak()
+├── server.py          # FastAPI + static UI, background jobs, SSE-ish streaming
+├── static/index.html  # vanilla JS UI, no build step
+├── __main__.py        # CLI: python -m debate "<topic>"
+├── demo.py            # offline stub (no key)
+└── demo_llm.py        # live run with real OpenAI
 ```
 
-## Run
+### Data flow
+
+```
+Topic ──► Proposer.speak() ──► Critic.speak() ──► Judge.speak()
+                ▲                     │                    │
+                └──── memory ─────────┘                    │
+                                                         ▼
+                                              verdict: CONTINUE | ACCEPT | REJECT
+```
+
+## Quick start
 
 ```bash
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements-dev.txt
-cp .env.example .env   # then put your OPENAI_API_KEY in .env
+git clone https://github.com/OlegUnreal/multi-agent-debate.git
+cd multi-agent-debate
 
-# offline demo (no key needed)
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements-dev.txt
+
+cp .env.example .env               # put OPENAI_API_KEY=sk-... in .env
+
+# offline demo (no key)
 python -m debate.demo
 
 # CLI live debate
@@ -48,12 +71,56 @@ python -m debate.server
 pytest -q
 ```
 
-## Config
+## Web UI
+
+`python -m debate.server` starts FastAPI on port 8000. Open the page, type a topic, hit Start. You see each round as it happens:
+
+- Proposer bubble (green) — the argument FOR.
+- Critic bubble (red) — the argument AGAINST.
+- Judge bubble (blue) — the verdict and score.
+- Final banner — ACCEPT / REJECT with a one-line summary.
+
+No build step, no framework — one HTML file with vanilla JS. Designed to be readable in an interview, not to win a design award.
+
+## Configuration
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `OPENAI_API_KEY` | — | required for live mode |
-| `DEBATE_MODEL` | `gpt-4o-mini` | model name |
-| `DEBATE_MAX_ROUNDS` | `4` | safety cap on rounds |
+| `DEBATE_MODEL` | `gpt-4o-mini` | model for all three roles |
+| `DEBATE_MAX_ROUNDS` | `4` | safety cap on debate rounds |
 | `DEBATE_TEMPERATURE` | `0.4` | sampling temperature |
 | `DEBATE_TIMEOUT` | `30` | per-call timeout (seconds) |
+| `DEBATE_MEMORY_TURNS` | `6` | rolling memory window per agent |
+
+## Testing
+
+```bash
+pytest -q
+pytest -v tests/test_loop.py      # debate loop + verdict extraction
+pytest -v tests/test_server.py    # FastAPI endpoints + UI serving
+```
+
+Covered: role isolation, memory truncation, verdict parsing from free text, retry on empty responses, log scrubbing, server job lifecycle.
+
+## Design decisions (interview notes)
+
+1. **Why separate memory per agent?**
+   Shared context would let the critic see the proposer's reasoning and just mirror it. Isolation forces genuine adversarial pressure — the whole point of the pattern.
+
+2. **Why is the judge the only one who can terminate?**
+   If any agent could stop the loop, the proposer would declare victory on round one. A single authoritative judge mirrors a human review panel.
+
+3. **Why extract the verdict from free text instead of forcing JSON?**
+   Models drift from strict schemas under pressure. Parsing `ACCEPT`/`REJECT`/`CONTINUE` with a regex fallback is more robust than `response_format=json_object`, which silently fails on some providers.
+
+4. **Why a background job + polling UI instead of WebSockets?**
+   Simpler to reason about, no connection-state bugs, and the debate is short enough that polling latency is invisible. WebSockets are a one-line swap later.
+
+## Project status
+
+Working prototype with real LLM integration, structured logging, web UI, and tests. Not production — no persistence, no auth, no multi-tenancy. Strong portfolio piece for agent-orchestration interviews.
+
+## License
+
+MIT.
