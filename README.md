@@ -1,5 +1,7 @@
 # multi-agent-debate
 
+[![CI](https://github.com/OlegUnreal/multi-agent-debate/actions/workflows/ci.yml/badge.svg)](https://github.com/OlegUnreal/multi-agent-debate/actions/workflows/ci.yml)
+
 Several agents argue about one decision until they reach consensus — with a live web UI to watch them.
 
 ## The idea
