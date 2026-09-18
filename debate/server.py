@@ -16,24 +16,32 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import SETTINGS
+from .episodic import EpisodicMemory
 from .logging_config import get_logger, setup_logging
-from .loop import run_debate, verdict_of
+from .loop import calibration_report, run_debate, verdict_of
 
 log = get_logger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="multi-agent-debate", version="0.3.0")
+app = FastAPI(title="multi-agent-debate", version="0.4.0")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # In-memory job store: job_id -> {status, topic, rounds, verdict, error}
 _JOBS: dict[str, dict[str, Any]] = {}
 _LOCK = threading.Lock()
 
+# Cross-debate episodic memory (SQLite; ':memory:' by default, point
+# DEBATE_EPISODIC_DB at a file for persistence across restarts).
+_EPISODIC = EpisodicMemory(SETTINGS.episodic_db)
+
 
 class DebateRequest(BaseModel):
     topic: str = Field(..., min_length=1, max_length=2000)
     max_rounds: int | None = Field(default=None, ge=1, le=20)
+    rubric: bool = Field(default=True, description="structured rubric judging")
+    recall_history: bool = Field(default=False,
+                                 description="inject prior-evidence from past debates")
 
 
 class DebateJob(BaseModel):
@@ -43,6 +51,7 @@ class DebateJob(BaseModel):
     rounds: list[dict[str, Any]] = []
     verdict: str | None = None
     error: str | None = None
+    metrics: dict[str, Any] | None = None
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -55,26 +64,38 @@ def health() -> dict[str, Any]:
     return {"status": "ok", "has_key": SETTINGS.has_key, "model": SETTINGS.model}
 
 
-def _run_job(job_id: str, topic: str, max_rounds: int | None) -> None:
+def _run_job(job_id: str, topic: str, max_rounds: int | None,
+             rubric: bool = True, recall_history: bool = False,
+             llm=None) -> None:
     with _LOCK:
         _JOBS[job_id]["status"] = "running"
     try:
-        if SETTINGS.has_key:
-            from .llm import make_llm
-            llm = make_llm()
-        else:
-            from .demo import stub_llm
-            llm = stub_llm
-        history = run_debate(topic, llm, max_rounds=max_rounds or SETTINGS.max_rounds)
+        if llm is None:
+            if SETTINGS.has_key:
+                from .llm import make_llm
+                llm = make_llm()
+            else:
+                from .demo import stub_llm
+                llm = stub_llm
+        history = run_debate(
+            topic, llm,
+            max_rounds=max_rounds or SETTINGS.max_rounds,
+            episodic=_EPISODIC if recall_history else None,
+            debate_id=job_id,
+            rubric_judging=rubric,
+        )
         rounds = [
-            {"n": r.n, "proposer": r.proposer, "critic": r.critic, "judge": r.judge}
+            {"n": r.n, "proposer": r.proposer, "critic": r.critic, "judge": r.judge,
+             "rubric": r.rubric.model_dump() if r.rubric else None}
             for r in history
         ]
+        metrics = calibration_report(history) if rubric else None
         with _LOCK:
             _JOBS[job_id].update(
                 status="done",
                 rounds=rounds,
                 verdict=verdict_of(history),
+                metrics=metrics,
             )
         log.info("debate_done", extra={"job_id": job_id, "verdict": verdict_of(history), "rounds": len(history)})
     except Exception as exc:  # noqa: BLE001
@@ -89,8 +110,12 @@ def start_debate(req: DebateRequest) -> DebateJob:
     job_id = uuid.uuid4().hex[:8]
     with _LOCK:
         _JOBS[job_id] = {"id": job_id, "status": "queued", "topic": req.topic,
-                         "rounds": [], "verdict": None, "error": None}
-    t = threading.Thread(target=_run_job, args=(job_id, req.topic, req.max_rounds), daemon=True)
+                         "rounds": [], "verdict": None, "error": None, "metrics": None}
+    t = threading.Thread(
+        target=_run_job,
+        args=(job_id, req.topic, req.max_rounds, req.rubric, req.recall_history),
+        daemon=True,
+    )
     t.start()
     return DebateJob(**_JOBS[job_id])
 

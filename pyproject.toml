@@ -4,16 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "multi-agent-debate"
-version = "0.3.0"
-description = "Multi-agent debate system: proposer, critic, judge with isolated memory + web UI."
+version = "0.4.0"
+description = "Multi-agent debate system: proposer, critic, judge with retrieval memory, argument ranking, cross-debate episodic memory + web UI."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "openai>=1.40",
     "python-dotenv>=1.0",
     "fastapi>=0.110",
+    "pydantic>=2.7",
     "uvicorn[standard]>=0.27",
     "httpx>=0.27",
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "scikit-learn>=1.4",
 ]
 
 [project.optional-dependencies]

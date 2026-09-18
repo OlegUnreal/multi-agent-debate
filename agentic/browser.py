@@ -62,9 +62,11 @@ def run(
             history.append(Step("DONE", ""))
             return history
         state = _execute(type("D", (), {
-            "goto": lambda u: type("S", (), {"text": "", "url": u})(),
-            "click": lambda s: type("S", (), {"text": "", "url": url})(),
-            "type": lambda s, t: type("S", (), {"text": "", "url": url})(),
+            # NOTE: methods on a type-bound instance receive `self` first -
+            # omitting it crashed every goto/click/type (caught by lock tests).
+            "goto": lambda _self, u: type("S", (), {"text": "", "url": u})(),
+            "click": lambda _self, s: type("S", (), {"text": "", "url": url})(),
+            "type": lambda _self, s, t: type("S", (), {"text": "", "url": url})(),
         })(), decision, guard)
         history.append(Step(name, getattr(state, "text", "")[:200]))
         if name == "goto" and getattr(state, "url", None):
