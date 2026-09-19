@@ -212,7 +212,7 @@ algorithm choices, not deployment config:
 ## Testing
 
 ```bash
-pytest -q
+pytest -q                              # 84 passed
 pytest -v tests/test_loop.py      # debate loop + verdict extraction
 pytest -v tests/test_server.py    # FastAPI endpoints + UI serving
 ```
@@ -240,3 +240,5 @@ Working prototype with real LLM integration, structured logging, web UI, and tes
 ## License
 
 MIT.
+
+*Last updated: 2026-09-19*
